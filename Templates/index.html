@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>URL Collector</title>
+    <!-- Replace Tailwind with Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/script.js"></script>
+    <style>
+        .tooltip {
+            opacity: 1 !important;
+        }
+        .tooltip-inner {
+            background-color: rgb(233, 222, 222) !important;
+            color: #000000 !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            padding: 12px;
+            max-width: 300px;
+            border-radius: 8px;
+        }
+        .bs-tooltip-auto[data-popper-placement^=top] .tooltip-arrow::before, 
+        .bs-tooltip-top .tooltip-arrow::before {
+            border-top-color: white !important;
+        }
+
+        @keyframes outer-ripple {
+            0% {
+                box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0.2);
+            }
+            70% {
+                box-shadow: 0 0 0 15px rgba(var(--bs-primary-rgb), 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0);
+            }
+        }
+
+        .btn-add-animate {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(
+                110deg,
+                var(--bs-primary) 20%,
+                var(--bs-primary) 40%,
+                var(--bs-btn-hover-bg) 50%,
+                var(--bs-primary) 60%,
+                var(--bs-primary) 80%
+            );
+            background-size: 200% auto;
+            animation: 
+                outer-ripple 2s infinite;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-add-animate::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 136, 0, 0.3);
+            border-radius: 50%;
+            transform: translate(-50%, -50%) scale(0);
+        }
+
+        .btn-add-animate:hover {
+            animation: outer-ripple 1s infinite;
+            background-position: right center;
+            box-shadow: 0 0 15px rgba(var(--bs-primary-rgb), 0.5);
+        }
+
+        .btn-add-animate:hover::after {
+            animation: none;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <!-- URL Modal -->
+    <div class="modal fade" id="urlModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add New URL</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text"><i class="fas fa-link"></i></span>
+                        <input id="url-input" type="text" class="form-control" 
+                            placeholder="Enter a URL (https://...)"
+                            pattern="https?://.+"
+                            title="Please enter a valid URL starting with http:// or https://">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button onclick="showQueueModal()" class="btn btn-info">
+                        <i class="fas fa-clipboard me-2"></i> Embedded URLs
+                    </button>
+                    <button id="add-url-button" onclick="addUrl()" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i> Add URL
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit URL Modal -->
+    <div class="modal fade" id="editUrlModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit URL</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit-url-id">
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <input id="edit-title-input" type="text" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL</label>
+                        <input id="edit-url-input" type="text" class="form-control" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Thumbnail URL</label>
+                        <input id="edit-thumbnail-input" type="text" class="form-control">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button onclick="saveUrlEdit()" class="btn btn-primary">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Queue Modal -->
+    <div class="modal fade" id="queueModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Embedded URLs</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>
+                                        <input type="checkbox" class="form-check-input" id="selectAll" 
+                                               onclick="toggleAllQueueItems()">
+                                    </th>
+                                    <th>Title</th>
+                                    <th>Added</th>
+                                </tr>
+                            </thead>
+                            <tbody id="queueTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeQueueModal()">Close</button>
+                    <button id="moveSelectedBtn" onclick="moveSelectedUrls()" class="btn btn-primary" disabled>
+                        <i class="fas fa-arrow-right me-2"></i> <span>Move Selected</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div class="bg-white shadow-sm p-4 position-fixed" style="width: 280px; height: 100vh; overflow-y: auto;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="mb-0">Filters</h5>
+                <button onclick="resetFilters()" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-undo"></i> Reset
+                </button>
+            </div>
+            
+            <!-- Search -->
+            <div class="mb-4">
+                <label class="form-label">Search</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" id="search-input" class="form-control" placeholder="Keywords" 
+                        oninput="filterUrls()">
+                </div>
+            </div>
+
+            <!-- Sort -->
+            <div class="mb-4">
+                <label class="form-label">Sort By</label>
+                <select id="sort-select" class="form-select">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="az">A-Z</option>
+                    <option value="za">Z-A</option>
+                </select>
+            </div>
+
+            <!-- Time Filter -->
+            <div class="mb-4">
+                <label class="form-label">Time Period</label>
+                <div class="form-check">
+                    <input type="radio" name="time-filter" value="all" checked class="form-check-input">
+                    <label class="form-check-label">All Time</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" name="time-filter" value="today" class="form-check-input">
+                    <label class="form-check-label">Today</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" name="time-filter" value="week" class="form-check-input">
+                    <label class="form-check-label">This Week</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" name="time-filter" value="month" class="form-check-input">
+                    <label class="form-check-label">This Month</label>
+                </div>
+            </div>
+
+            <!-- Read Status Filter -->
+            <div class="mb-4">
+                <label class="form-label">Status</label>
+                <div class="form-check">
+                    <input type="radio" name="status-filter" value="all" checked class="form-check-input">
+                    <label class="form-check-label">All</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" name="status-filter" value="read" class="form-check-input">
+                    <label class="form-check-label">Read</label>
+                </div>
+                <div class="form-check">
+                    <input type="radio" name="status-filter" value="unread" class="form-check-input">
+                    <label class="form-check-label">Unread</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-grow-1 p-4" style="margin-left: 280px;">
+            <div class="container">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h1 class="h3 mb-0">
+                                <span class="text-primary">🔗</span> URL Collections
+                            </h1>
+                            <button data-bs-toggle="modal" data-bs-target="#urlModal"
+                                class="btn btn-primary btn-add-animate">
+                                <i class="fas fa-plus me-1"></i>
+                            </button>
+                        </div>
+
+                        <div id="collection-section">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <small id="url-count" class="text-muted"></small>
+                            </div>
+                            <div id="url-list" class="list-group list-group-flush"></div>
+                            
+                            <!-- Pagination -->
+                            <div class="mt-4 d-flex justify-content-between align-items-center">
+                                <small id="pagination-info" class="text-muted"></small>
+                                <div class="btn-group">
+                                    <button id="prev-page" onclick="changePage('prev')" 
+                                        class="btn btn-outline-secondary">
+                                        <i class="fas fa-chevron-left me-1"></i> Previous
+                                    </button>
+                                    <button id="next-page" onclick="changePage('next')" 
+                                        class="btn btn-outline-secondary">
+                                        Next <i class="fas fa-chevron-right ms-1"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+</body>
+</html>

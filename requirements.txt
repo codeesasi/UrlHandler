@@ -1,0 +1,6 @@
+pyperclip
+flask
+flask-cors
+requests
+beautifulsoup4
+bs4
