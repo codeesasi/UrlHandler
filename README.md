@@ -1,6 +1,19 @@
 # MaintainUrl
 
-A modern web application for collecting, organizing, and managing URLs with automatic metadata extraction and queue management.
+<h1 align="center">UrlHandler</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/status-active-brightgreen.svg" alt="Status"/>
+  <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"/>
+</p>
+
+<hr/>
+
+<h2>About</h2>
+<p>
+  <b>UrlHandler</b> is a project for handling and processing URLs efficiently.<br/>
+  This repository contains utilities and tools for URL parsing, validation, and manipulation.
+</p>
 
 ## Features
 
@@ -105,3 +118,8 @@ MaintainUrl/
 2. Create a new branch
 3. Make your changes
 4. Submit a pull request
+
+<h2>License</h2>
+<p>
+  This project is licensed under the MIT License.
+</p>
