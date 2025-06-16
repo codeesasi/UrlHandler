@@ -1,12 +1,11 @@
-import json
 import time
 import pyperclip
-from datetime import datetime, UTC
 import threading
 import os
 from utils.url_helpers import is_valid_url, get_url_metadata
 from utils.file_handlers import read_queue, write_queue
 import random
+from utils.common import get_current_utc_datetime
 
 QUEUE_FILE = 'data/queue.json'
 
@@ -49,10 +48,9 @@ def monitor_clipboard():
                         'url': current_clipboard,
                         'title': metadata['title'],
                         'thumbnail': metadata['thumbnail'],
-                        'added': datetime.now(UTC).isoformat(),
+                        'added': get_current_utc_datetime(),
                         'isRead': False,
-                        'clickCount': 0,
-                        'movedToList': False
+                        'clickCount': 0
                     }
                     queue.append(new_entry)
                     write_queue(queue)

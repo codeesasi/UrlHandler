@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from utils.url_helpers import is_valid_url, get_url_metadata
 from utils.file_handlers import read_urls, write_urls
-from datetime import datetime, UTC
+from utils.common import get_current_utc_datetime
 import logging
 
 url_bp = Blueprint('urls', __name__)
@@ -34,7 +34,7 @@ def add_url():
         'url': url,
         'title': metadata['title'],
         'thumbnail': metadata['thumbnail'],
-        'added': datetime.now(UTC).isoformat(),
+        'added': get_current_utc_datetime(),
         'isRead': False,
         'clickCount': 0
     }
@@ -96,7 +96,6 @@ def update_url_status():
     for entry in urls:
         if entry['url'] == url_to_update:
             entry['isRead'] = data.get('isRead', entry['isRead'])
-            entry['clickCount'] = data.get('clickCount', entry['clickCount'])
             break
     write_urls(urls)
     return jsonify({'status': 'success'}), 200  

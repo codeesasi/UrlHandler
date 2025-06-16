@@ -73,22 +73,8 @@ function renderCurrentPage() {
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const pageItems = allUrls.slice(startIndex, endIndex);
     
-    list.innerHTML = '';
-    if (pageItems.length === 0) {
-        list.innerHTML = `
-            <div class="text-center py-8 text-gray-500">
-                <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-                <p>No URLs saved yet. Add your first URL!</p>
-            </div>
-        `;
-        return;
-    }
-    
-    // Clean up tooltips before updating content
-    cleanupTooltips();
-    
+    // Batch DOM updates using DocumentFragment
+    const fragment = document.createDocumentFragment();
     pageItems.forEach(entry => {
         const div = document.createElement('div');
         div.className = "list-group-item d-flex align-items-center position-relative";
@@ -161,31 +147,7 @@ function renderCurrentPage() {
         });
         
         // Initialize tooltip
-        new bootstrap.Tooltip(div, {
-            template: `
-                <div class="tooltip" role="tooltip">
-                    <div class="tooltip-arrow"></div>
-                    <div class="tooltip-inner"></div>
-                </div>
-            `,
-            title: `
-                <div style="max-width: 250px;">
-                    ${entry.thumbnail ? `
-                        <img src="${entry.thumbnail}" class="img-fluid rounded mb-2" 
-                             style="max-height: 150px; width: 100%; object-fit: cover;"
-                             onerror="this.style.display='none'">
-                    ` : ''}
-                    <div class="fw-bold mb-1">${entry.title || entry.url}</div>
-                    <div class="small text-muted">
-                        ${entry.clickCount ? `Visited ${entry.clickCount} ${entry.clickCount === 1 ? 'time' : 'times'}` : 'Not visited yet'}
-                    </div>
-                </div>
-            `,
-            html: true,
-            delay: { show: 300, hide: 100 },
-            placement: 'top',
-            trigger: 'hover'
-        });
+        initializeTooltip(div, entry);
         
         // Add hover effects
         div.addEventListener('mouseenter', () => {
@@ -204,8 +166,15 @@ function renderCurrentPage() {
             }
         });
         
-        list.appendChild(div);
+        fragment.appendChild(div);
     });
+    
+    // Single DOM update
+    list.innerHTML = '';
+    list.appendChild(fragment);
+    
+    // Cleanup old tooltips before creating new ones
+    cleanupTooltips();
     
     updatePaginationInfo();
 }
@@ -458,16 +427,98 @@ function loadCollection() {
 
 // Clean up tooltips before updating content
 function cleanupTooltips() {
-    const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    // Update tooltip cleanup to handle all tooltips
+    const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"], .tooltip');
     tooltips.forEach(element => {
         const tooltip = bootstrap.Tooltip.getInstance(element);
         if (tooltip) {
             tooltip.dispose();
         }
+        // Also remove any orphaned tooltip elements
+        if (element.classList.contains('tooltip')) {
+            element.remove();
+        }
     });
 }
 
-// Update reset function to maintain newest first sorting
+// Add new function for tooltip initialization
+function initializeTooltip(element, entry) {
+    cleanupTooltips(); // Clean up before creating new tooltip
+    
+    const tooltip = new bootstrap.Tooltip(element, {
+        template: `
+            <div class="tooltip" role="tooltip">
+                <div class="tooltip-arrow"></div>
+                <div class="tooltip-inner"></div>
+            </div>
+        `,
+        title: `
+            <div style="max-width: 250px;">
+                ${entry.thumbnail ? `
+                    <img src="${entry.thumbnail}" class="img-fluid rounded mb-2" 
+                         style="max-height: 150px; width: 100%; object-fit: cover;"
+                         onerror="this.style.display='none'">
+                ` : ''}
+                <div class="fw-bold mb-1">${entry.title || entry.url}</div>
+                <div class="small text-muted">
+                    ${entry.clickCount ? `Visited ${entry.clickCount} ${entry.clickCount === 1 ? 'time' : 'times'}` : 'Not visited yet'}
+                </div>
+            </div>
+        `,
+        html: true,
+        delay: { show: 300, hide: 100 },
+        placement: 'top',
+        trigger: 'hover'
+    });
+
+    // Add event listener to cleanup tooltip when element is removed
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' && !document.contains(element)) {
+                tooltip.dispose();
+                observer.disconnect();
+            }
+        });
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+// Update the observer initialization
+document.addEventListener('DOMContentLoaded', () => {
+    const urlList = document.getElementById('url-list');
+    if (!urlList) return;
+
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+                // Clean up existing tooltips before reinitializing
+                cleanupTooltips();
+                
+                // Reinitialize tooltips for new elements
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) { // Element node
+                        const entry = allUrls.find(url => 
+                            url.url === node.querySelector('a')?.href
+                        );
+                        if (entry) {
+                            initializeTooltip(node, entry);
+                        }
+                    }
+                });
+            }
+        });
+    });
+
+    observer.observe(urlList, {
+        childList: true,
+        subtree: true
+    });
+});
+
 function resetFilters() {
     allUrls = [...originalUrlsList];
     // Sort by newest first
@@ -561,7 +612,7 @@ function incrementClickCount(url) {
 }
 
 function showQueueModal() {
-    fetch('/api/queue/get_queue')  // Updated URL with blueprint prefix
+    fetch('/api/queue/get_queue')
         .then(res => res.json())
         .then(data => {
             const tableBody = document.getElementById('queueTable');
@@ -569,7 +620,9 @@ function showQueueModal() {
                 <tr>
                     <td>
                         <input type="checkbox" class="form-check-input queue-item" 
-                               data-index="${index}" onchange="updateMoveButton()">
+                               data-title="${item.title}"
+                               data-url="${item.url}" 
+                               onchange="updateMoveButton()">
                     </td>
                     <td>${item.title}</td>
                     <td>${formatDate(item.added)}</td>
@@ -603,24 +656,32 @@ async function moveSelectedUrls() {
         moveBtn.disabled = true;
         btnText.textContent = 'Moving...';
         
-        const selectedItems = Array.from(document.querySelectorAll('#queueTable input[type="checkbox"]:checked'))
-            .map(cb => cb.getAttribute('data-title'));
-        
-        const response = await fetch('/move-queue-items', {
+        // Get selected items with their titles
+        const selectedItems = Array.from(document.querySelectorAll('.queue-item:checked'))
+            .map(cb => (
+                cb.getAttribute('data-url')
+            ));
+        console.log('Selected items:', selectedItems);
+        if (selectedItems.length === 0) {
+            showNotification('No items selected to move', 'error');
+            return;
+        }
+
+        const response = await fetch('/api/queue/move_queued_urls', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ titles: selectedItems })
+            body: JSON.stringify({ items: selectedItems })
         });
 
         if (!response.ok) throw new Error('Failed to move items');
 
-        showToast('Success', 'Selected items moved successfully', 'success');
-        await refreshQueueTable(); // Refresh the queue table
-        filterUrls(); // Refresh the main URL list
+        showNotification('Selected items moved successfully');
+        closeQueueModal();
+        loadCollection();
     } catch (error) {
-        showToast('Error', error.message, 'error');
+        showNotification(error.message, 'error');
     } finally {
         moveBtn.disabled = false;
         btnText.textContent = originalText;
@@ -631,3 +692,60 @@ function closeQueueModal() {
     const modal = bootstrap.Modal.getInstance(document.getElementById('queueModal'));
     modal?.hide();
 }
+
+// Add mutation observer to handle dynamic content updates
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+            // Reinitialize tooltips for new elements
+            const tooltips = mutation.target.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltips.forEach(element => {
+                new bootstrap.Tooltip(element);
+            });
+        }
+    });
+});
+
+// Start observing dynamic content areas
+document.addEventListener('DOMContentLoaded', () => {
+    // Observe URL list for changes
+    observer.observe(document.getElementById('url-list'), {
+        childList: true,
+        subtree: true
+    });
+});
+
+// Improve modal cleanup
+function cleanupModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    
+    // Clear form inputs
+    modal.querySelectorAll('input').forEach(input => {
+        input.value = '';
+        input.classList.remove('is-invalid');
+    });
+    
+    // Remove any error messages
+    modal.querySelectorAll('.invalid-feedback').forEach(el => el.remove());
+}
+
+// Add debouncing for search input
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+const debouncedSearch = debounce(() => {
+    handleSearch();
+}, 300);
+
+// Update search input handler
+document.getElementById('search-input')?.addEventListener('input', debouncedSearch);
