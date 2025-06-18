@@ -29,6 +29,45 @@ function togglePassword() {
     }
 }
 
+function toggleSignupPassword() {
+    const passwordInput = document.getElementById('signupPassword');
+    const toggleIcon = passwordInput.parentElement.querySelector('.password-toggle');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        toggleIcon.classList.remove('fa-eye');
+        toggleIcon.classList.add('fa-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        toggleIcon.classList.remove('fa-eye-slash');
+        toggleIcon.classList.add('fa-eye');
+    }
+}
+
+function toggleForms(formType) {
+    const loginForm = document.getElementById('loginForm');
+    const signupForm = document.getElementById('signupForm');
+    const title = document.getElementById('formTitle');
+    const subtitle = document.getElementById('formSubtitle');
+    const buttons = document.querySelectorAll('.btn-group .btn');
+
+    if (formType === 'login') {
+        loginForm.classList.remove('d-none');
+        signupForm.classList.add('d-none');
+        title.textContent = 'Welcome Back!';
+        subtitle.textContent = 'Please login to continue';
+        buttons[0].classList.add('active');
+        buttons[1].classList.remove('active');
+    } else {
+        loginForm.classList.add('d-none');
+        signupForm.classList.remove('d-none');
+        title.textContent = 'Create Account';
+        subtitle.textContent = 'Please fill in your details';
+        buttons[0].classList.remove('active');
+        buttons[1].classList.add('active');
+    }
+}
+
 async function handleLogin(event) {
     event.preventDefault();
     
@@ -58,8 +97,10 @@ async function handleLogin(event) {
         
         if (response.ok) {
             showNotification('Login successful');
-            // Redirect to main page after successful login
-            window.location.href = '/';
+            // Add returnUrl handling
+            const params = new URLSearchParams(window.location.search);
+            const returnUrl = params.get('next') || '/';
+            window.location.href = returnUrl;
         } else {
             throw new Error(data.message || 'Login failed');
         }
@@ -72,3 +113,67 @@ async function handleLogin(event) {
         spinner.classList.add('d-none');
     }
 }
+
+async function handleSignup(event) {
+    event.preventDefault();
+    
+    const email = document.getElementById('signupEmail').value;
+    const password = document.getElementById('signupPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    if (password !== confirmPassword) {
+        showNotification('Passwords do not match', 'error');
+        return;
+    }
+
+    const button = event.target.querySelector('button');
+    const buttonText = button.querySelector('.login-text');
+    const spinner = button.querySelector('.spinner-border');
+    
+    button.disabled = true;
+    buttonText.style.opacity = '0';
+    spinner.classList.remove('d-none');
+    
+    try {
+        const response = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showNotification('Account created successfully');
+            toggleForms('login');
+        } else {
+            throw new Error(data.message || 'Signup failed');
+        }
+    } catch (error) {
+        showNotification(error.message, 'error');
+    } finally {
+        button.disabled = false;
+        buttonText.style.opacity = '1';
+        spinner.classList.add('d-none');
+    }
+}
+
+// Add function to check auth status on page load
+function checkAuthStatus() {
+    fetch('/api/auth/check-auth')
+        .then(response => {
+            if (!response.ok && window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
+        })
+        .catch(() => {
+            if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
+        });
+}
+
+// Add event listener for page load
+document.addEventListener('DOMContentLoaded', checkAuthStatus);
