@@ -72,7 +72,7 @@ function renderCurrentPage() {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const pageItems = allUrls.slice(startIndex, endIndex);
-    
+
     // Batch DOM updates using DocumentFragment
     const fragment = document.createDocumentFragment();
     pageItems.forEach(entry => {
@@ -116,6 +116,11 @@ function renderCurrentPage() {
                     title="Edit URL">
                     <i class="fas fa-edit"></i>
                 </button>
+                <button class="btn btn-outline-secondary btn-sm" 
+                    onclick="summarizeUrl('${encodeURIComponent(entry.url)}')"
+                    title="Summarize">
+                    <i class="fas fa-robot"></i>
+                </button>
                 <div class="dropdown">
                     <button class="btn btn-outline-danger btn-sm ms-3" 
                         data-bs-toggle="dropdown" 
@@ -136,20 +141,12 @@ function renderCurrentPage() {
         // Add click handler for the link
         const link = div.querySelector('a');
         const readIcon = div.querySelector('.fa-eye, .fa-eye-slash');
-        
         link.addEventListener('click', (e) => {
-            // Update icon immediately
             readIcon.className = 'fas fa-eye text-success';
-            
-            // Update server
             updateUrlReadStatus(entry.url, true);
             incrementClickCount(entry.url);
         });
-        
-        // Initialize tooltip
         initializeTooltip(div, entry);
-        
-        // Add hover effects
         div.addEventListener('mouseenter', () => {
             div.classList.add('shadow-sm', 'bg-light');
             div.querySelector('.fa-external-link-alt').style.opacity = '1';
@@ -157,7 +154,6 @@ function renderCurrentPage() {
                 div.querySelector('img').style.transform = 'scale(1.05)';
             }
         });
-
         div.addEventListener('mouseleave', () => {
             div.classList.remove('shadow-sm', 'bg-light');
             div.querySelector('.fa-external-link-alt').style.opacity = '0';
@@ -165,17 +161,13 @@ function renderCurrentPage() {
                 div.querySelector('img').style.transform = 'scale(1)';
             }
         });
-        
         fragment.appendChild(div);
     });
-    
-    // Single DOM update
+
     list.innerHTML = '';
     list.appendChild(fragment);
-    
-    // Cleanup old tooltips before creating new ones
+
     cleanupTooltips();
-    
     updatePaginationInfo();
 }
 
@@ -749,3 +741,61 @@ const debouncedSearch = debounce(() => {
 
 // Update search input handler
 document.getElementById('search-input')?.addEventListener('input', debouncedSearch);
+
+// Remove the old summarizeUrl function and replace with:
+function summarizeUrl(url) {
+    const modal = new bootstrap.Modal(document.getElementById('summarizeModal'));
+    document.getElementById('summarize-loading').classList.remove('d-none');
+    document.getElementById('summarize-result').innerText = '';
+    document.getElementById('ai-summary-section').classList.add('d-none');
+    modal.show();
+    fetch('/api/urls/summarize_url', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ url: decodeURIComponent(url) })
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('summarize-loading').classList.add('d-none');
+        let summary = data.summary || '';
+        // Split <think>...</think> if present
+        const { aiSummary, mainContent } = splitSummary(summary);
+        if (aiSummary) {
+            document.getElementById('ai-summary-content').innerText = aiSummary;
+            document.getElementById('ai-summary-section').classList.remove('d-none');
+        } else {
+            document.getElementById('ai-summary-section').classList.add('d-none');
+        }
+        document.getElementById('summarize-result').innerText = mainContent || 'No summary available.';
+    })
+    .catch(() => {
+        document.getElementById('summarize-loading').classList.add('d-none');
+        document.getElementById('summarize-result').innerText = 'Failed to summarize.';
+        document.getElementById('ai-summary-section').classList.add('d-none');
+    });
+}
+
+// Add this helper function near the top or before summarizeUrl
+function splitSummary(raw) {
+    const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/i);
+    let aiSummary = '';
+    let mainContent = raw;
+    if (thinkMatch) {
+        aiSummary = thinkMatch[1].trim();
+        mainContent = raw.replace(thinkMatch[0], '').trim();
+    }
+    return { aiSummary, mainContent };
+}
+
+// Add this function if not already present
+function toggleThinkSummary() {
+  const content = document.getElementById('ai-summary-content');
+  const btnText = document.getElementById('think-toggle-text');
+  if (content.classList.contains('d-none')) {
+    content.classList.remove('d-none');
+    btnText.textContent = 'Hide Think';
+  } else {
+    content.classList.add('d-none');
+    btnText.textContent = 'Show Think';
+  }
+}
