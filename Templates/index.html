@@ -267,6 +267,35 @@
                             </div>
                             <div id="url-list" class="list-group list-group-flush"></div>
                             
+                            <!-- Add Summarize Modal -->
+                            <div class="modal fade" id="summarizeModal" tabindex="-1">
+                              <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                  <div class="modal-header">
+                                    <h5 class="modal-title">
+                                      <i class="fas fa-robot text-primary me-2"></i>AI Summary
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                  </div>
+                                  <div class="modal-body">
+                                    <div id="summarize-loading" class="text-center d-none">
+                                      <div class="spinner-border text-primary" role="status"></div>
+                                      <div class="mt-2">Summarizing...</div>
+                                    </div>
+                                    <div id="ai-summary-section" class="mb-3 d-none">
+                                      <button id="think-toggle-btn" class="btn btn-link p-0" type="button" onclick="toggleThinkSummary()" title="Show AI Think">
+                                        <i class="fas fa-brain"></i> <span id="think-toggle-text">Show Think</span>
+                                      </button>
+                                      <div id="ai-summary-content" class="alert alert-info p-3 mb-0 mt-2 d-none" style="white-space: pre-line;">
+                                        <!-- AI Summary will be injected here -->
+                                      </div>
+                                    </div>
+                                    <div id="summarize-result" style="white-space: pre-line;"></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
                             <!-- Pagination -->
                             <div class="mt-4 d-flex justify-content-between align-items-center">
                                 <small id="pagination-info" class="text-muted"></small>
@@ -292,3 +321,129 @@
     <div class="toast-container position-fixed bottom-0 end-0 p-3"></div>
 </body>
 </html>
+<script>
+  // Modify renderUrlList to add Summarize and Think buttons
+  function renderUrlList(urls) {
+    const urlList = document.getElementById('url-list');
+    urlList.innerHTML = '';
+    urls.forEach((item, idx) => {
+      // ...existing code for each item...
+      const div = document.createElement('div');
+      div.className = 'list-group-item d-flex justify-content-between align-items-center';
+      // ...existing code...
+      div.innerHTML = `
+        <div>
+          <!-- ...existing code for title, etc... -->
+          <strong>${item.title}</strong>
+          <br>
+          <a href="${item.url}" target="_blank">${item.url}</a>
+        </div>
+        <div>
+          <!-- ...existing action buttons... -->
+          <button class="btn btn-outline-secondary btn-sm me-2" title="Summarize"
+            onclick="summarizeUrl('${encodeURIComponent(item.url)}')">
+            <i class="fas fa-robot"></i> Summarize
+          </button>
+          <a href="#" class="btn btn-link btn-sm p-0 align-baseline" style="font-size:0.95em"
+            onclick="showThink('${encodeURIComponent(item.url)}');return false;">think</a>
+        </div>
+      `;
+      urlList.appendChild(div);
+    });
+  }
+
+  // Helper to split <think>...</think> from summary
+  function splitSummary(raw) {
+    const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/i);
+    let aiSummary = '';
+    let mainContent = raw;
+    if (thinkMatch) {
+      aiSummary = thinkMatch[1].trim();
+      mainContent = raw.replace(thinkMatch[0], '').trim();
+    }
+    return { aiSummary, mainContent };
+  }
+
+  // Toggle AI Summary (think) visibility
+  function toggleThinkSummary() {
+    const content = document.getElementById('ai-summary-content');
+    const btnText = document.getElementById('think-toggle-text');
+    if (content.classList.contains('d-none')) {
+      content.classList.remove('d-none');
+      btnText.textContent = 'Hide Think';
+    } else {
+      content.classList.add('d-none');
+      btnText.textContent = 'Show Think';
+    }
+  }
+
+  // Summarize logic with AI Summary split
+  function summarizeUrl(url) {
+    const modal = new bootstrap.Modal(document.getElementById('summarizeModal'));
+    document.getElementById('summarize-loading').classList.remove('d-none');
+    document.getElementById('summarize-result').innerText = '';
+    document.getElementById('ai-summary-section').classList.add('d-none');
+    document.getElementById('ai-summary-content').classList.add('d-none');
+    document.getElementById('think-toggle-text').textContent = 'Show Think';
+    modal.show();
+    fetch('/api/urls/summarize_url', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url: decodeURIComponent(url) })
+    })
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById('summarize-loading').classList.add('d-none');
+      let summary = data.summary || '';
+      // Split <think>...</think> if present
+      const { aiSummary, mainContent } = splitSummary(summary);
+      if (aiSummary) {
+        document.getElementById('ai-summary-content').innerText = aiSummary;
+        document.getElementById('ai-summary-section').classList.remove('d-none');
+        document.getElementById('ai-summary-content').classList.add('d-none');
+        document.getElementById('think-toggle-text').textContent = 'Show Think';
+      } else {
+        document.getElementById('ai-summary-section').classList.add('d-none');
+      }
+      document.getElementById('summarize-result').innerText = mainContent || 'No summary available.';
+    })
+    .catch(() => {
+      document.getElementById('summarize-loading').classList.add('d-none');
+      document.getElementById('summarize-result').innerText = 'Failed to summarize.';
+      document.getElementById('ai-summary-section').classList.add('d-none');
+    });
+  }
+
+  // Show think details in a new modal
+  function showThink(url) {
+    url = decodeURIComponent(url);
+    const thinkModal = new bootstrap.Modal(document.getElementById('thinkModal'));
+    const thinkBody = document.getElementById('think-result');
+    thinkBody.innerText = '';
+    // If already loaded, show from cache
+    if (window._thinkDetails && window._thinkDetails[url]) {
+      thinkBody.innerText = window._thinkDetails[url];
+      thinkModal.show();
+      return;
+    }
+    // Otherwise, fetch again
+    thinkBody.innerText = 'Loading...';
+    fetch('/api/urls/summarize_url', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url })
+    })
+    .then(res => res.json())
+    .then(data => {
+      thinkBody.innerText = data.think || 'No think details available.';
+      // Cache for later
+      window._thinkDetails = window._thinkDetails || {};
+      window._thinkDetails[url] = data.think;
+      thinkModal.show();
+    })
+    .catch(() => {
+      thinkBody.innerText = 'Failed to load think details.';
+      thinkModal.show();
+    });
+  }
+</script>

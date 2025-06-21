@@ -2,7 +2,11 @@ from flask import Blueprint, jsonify, request, current_app
 from utils.url_helpers import is_valid_url, get_url_metadata
 from utils.file_handlers import read_urls, write_urls
 from utils.common import get_current_utc_datetime
-import logging
+import requests
+from bs4 import BeautifulSoup
+from langchain_community.llms import Ollama
+from langchain.chains.summarize import load_summarize_chain
+from langchain.docstore.document import Document
 
 url_bp = Blueprint('urls', __name__)
 
@@ -114,3 +118,30 @@ def increment_click():
             break
     write_urls(urls)
     return jsonify({'status': 'success'}), 200
+
+@url_bp.route('/summarize_url', methods=['POST'])
+def summarize_url():
+    data = request.get_json()
+    url = data.get('url')
+    if not url:
+        return jsonify({'summary': 'No URL provided.'}), 400
+
+    try:
+        resp = requests.get(url, timeout=10)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        # Extract main text content
+        text = soup.get_text(separator='\n', strip=True)
+        if not text or len(text) < 10:
+            return jsonify({'summary': 'Content too short to summarize.'})
+        # Limit to first 4000 chars for LLM context
+        think = text[:1000]  # shrink/think details (first 1000 chars)
+        text = text[:4000]
+        doc = Document(page_content=text)
+        llm = Ollama(model="deepseek-r1:8b")  # or your preferred model
+        chain = load_summarize_chain(llm, chain_type="stuff")
+        summary = chain.run([doc])
+        return jsonify({'summary': summary, 'think': think})
+    except Exception as e:
+        return jsonify({'summary': f'Error: {str(e)}'}), 500
+
+# No changes needed here for splitting, as the summary already includes <think>...</think>

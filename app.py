@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from blueprints.url_routes import url_bp
 from blueprints.queue_routes import queue_bp
 from blueprints.auth_routes import auth_bp, login_required

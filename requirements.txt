@@ -4,3 +4,5 @@ flask-cors
 requests
 beautifulsoup4
 bs4
+langchain-community
+langchain
