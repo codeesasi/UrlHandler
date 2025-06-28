@@ -1,14 +1,23 @@
 from flask import Blueprint, jsonify, request, current_app
 from utils.url_helpers import is_valid_url, get_url_metadata
-from utils.file_handlers import read_urls, write_urls
+from utils.file_handlers import read_urls, write_urls, save_summary_data
 from utils.common import get_current_utc_datetime
 import requests
 from bs4 import BeautifulSoup
-from langchain_community.llms import Ollama
-from langchain.chains.summarize import load_summarize_chain
-from langchain.docstore.document import Document
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+from typing import List
 
 url_bp = Blueprint('urls', __name__)
+
+class WebSummaryResult(BaseModel):
+    summary: str = Field(description="Concise summary of the web content")
+    keywords: List[str] = Field(description="List of important keywords extracted from the content")
+    tone: str = Field(description="The tone of the original content, e.g., informative, persuasive, casual")
+    rating: int = Field(default=0, ge=0, le=5, description="Rating of the content quality from 0 to 5")
+
 
 @url_bp.route('/get_urls', methods=['GET'])
 def get_urls():
@@ -129,18 +138,77 @@ def summarize_url():
     try:
         resp = requests.get(url, timeout=10)
         soup = BeautifulSoup(resp.text, 'html.parser')
+
+        print(soup.title.string)  # Debugging line to check title extraction
+
+        # Check if the page has a t
+
         # Extract main text content
         text = soup.get_text(separator='\n', strip=True)
         if not text or len(text) < 10:
             return jsonify({'summary': 'Content too short to summarize.'})
-        # Limit to first 4000 chars for LLM context
-        think = text[:1000]  # shrink/think details (first 1000 chars)
-        text = text[:4000]
-        doc = Document(page_content=text)
-        llm = Ollama(model="deepseek-r1:8b")  # or your preferred model
-        chain = load_summarize_chain(llm, chain_type="stuff")
-        summary = chain.run([doc])
-        return jsonify({'summary': summary, 'think': think})
+        
+        # Store first 4000 chars for LLM context
+        raw_text = text[:4000]
+        output_parser = PydanticOutputParser(pydantic_object=WebSummaryResult)
+        escaped_format_instructions = output_parser.get_format_instructions().replace("{", "{{").replace("}", "}}")
+
+        # 3. Prompt with stricter instruction
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    (
+                        "You are an intelligent content summarizer designed to analyze and distill meaningful information from raw HTML or plain text extracted from HTTPS URLs.Your goal is to produce high-quality, human-readable summaries that are informative, concise, and keyword-rich.\n"
+                        "Each summary should highlight the main purpose, insights, or value offered by the page, while using clear and professional language.\n"
+                        "Your response should strictly follow the JSON format below without any additional text or explanation.\n"
+                        "Ignore irrelevant elements like navigation bars, ads, cookie banners, and footers.\n"
+                        "Add relevant **keywords** naturally to improve discoverability (SEO-friendly).\n"
+                        "Identify the main purpose of the page (e.g., educate, promote, inform, instruct).\n"
+                        "If the content is multi-sectioned, prioritize the most impactful parts.\n"
+                        "Analyze and summarize the following web content, rating for the site. Do not include any explanation or text outside the JSON.\n\n"
+                        f"Respond using this format:\n{escaped_format_instructions}"
+                    ),
+                ),
+                ("human", "{web_content}"),
+            ]
+        )
+
+        # 4. LLM setup
+        llm = ChatOllama(
+            model="deepseek-r1:8b",
+            temperature=0.3,
+            max_tokens=1500,
+            top_p=0.8,
+            top_k=10,
+            stream=False,
+            num_thread=5,
+            num_gpu=1,
+            num_ctx=4096,
+        )
+
+        # 5. Chain
+        chain = prompt | llm | output_parser
+
+        # 6. Input
+        web_content_text = """
+        OpenAI has released GPT-4o, the newest generation of its powerful language model. Unlike earlier versions, GPT-4o offers
+        multimodal capabilities, meaning it can understand and generate text, audio, and images. It is faster, more cost-effective,
+        and offers better real-time reasoning. The model is freely available to ChatGPT users, with enhanced access for paid tiers.
+        """
+
+        # 7. Safe call with debugging
+        try:
+            result = chain.invoke({"web_content": web_content_text})
+            # Save data for training
+            save_summary_data(url, raw_text, result, "deepseek-r1:8b")
+            return jsonify({'summary': result.summary,'keywords': result.keywords, 'tone': result.tone, 'rating': result.rating})
+            
+        except Exception as e:
+            # Optional fallback: get raw model output to inspect
+            raw_output = (prompt | llm).invoke({"web_content": web_content_text})
+            return jsonify({'summary': raw_output.summary,'keywords': raw_output.keywords, 'tone': raw_output.tone, 'rating': raw_output.rating})
+        
     except Exception as e:
         return jsonify({'summary': f'Error: {str(e)}'}), 500
 

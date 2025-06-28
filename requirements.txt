@@ -6,3 +6,4 @@ beautifulsoup4
 bs4
 langchain-community
 langchain
+openpyxl
