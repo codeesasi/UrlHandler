@@ -1,13 +1,17 @@
 import time
+import random
+import logging
 import pyperclip
 import threading
-import os
+from utils.file_handlers import read_queue
+from utils.common import clipboard_safe_insert
 from utils.url_helpers import is_valid_url, get_url_metadata
-from utils.file_handlers import read_queue, write_queue
-import random
-from utils.common import get_current_utc_datetime
 
-QUEUE_FILE = 'data/queue.json'
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 def safe_paste():
     max_retries = 3
@@ -26,42 +30,43 @@ def safe_paste():
 
 def monitor_clipboard():
     last_copied = ''
-    os.makedirs('data', exist_ok=True)
+    logging.info("Clipboard monitor started")
     
     while True:
         try:
             current_clipboard = safe_paste()
             
             if current_clipboard is None:
-                print("Failed to access clipboard, retrying in 2 seconds...")
+                logging.warning("Failed to access clipboard, retrying in 2 seconds...")
                 time.sleep(2)
                 continue
+            
+            # Debug print current clipboard content
+            if current_clipboard != last_copied:
+                logging.debug(f"New clipboard content: {current_clipboard[:100]}...")
                 
             if current_clipboard != last_copied and is_valid_url(current_clipboard):
-                metadata = get_url_metadata(current_clipboard)
-                queue = read_queue()
-                
-                # Check if URL already exists in queue
-                if not any(item['url'] == current_clipboard for item in queue):
-                    print(f"Cliptext: {current_clipboard}")
-                    new_entry = {
-                        'url': current_clipboard,
-                        'title': metadata['title'],
-                        'thumbnail': metadata['thumbnail'],
-                        'added': get_current_utc_datetime(),
-                        'isRead': False,
-                        'clickCount': 0
-                    }
-                    queue.append(new_entry)
-                    write_queue(queue)
-                
-                last_copied = current_clipboard
+                logging.info(f"Valid URL detected: {current_clipboard}")
+                try:
+                    metadata = get_url_metadata(current_clipboard)
+                    queue = read_queue()
+                    
+                    # Check if URL already exists in queue
+                    if not any(item['url'] == current_clipboard for item in queue):
+                        result = clipboard_safe_insert(current_clipboard, metadata['title'], metadata['thumbnail'])
+                        logging.info(f"Queue insert result: {result}")
+                    else:
+                        logging.info(f"URL already exists in queue: {current_clipboard}")
+                        
+                    last_copied = current_clipboard
+                except Exception as e:
+                    logging.error(f"Error processing URL: {str(e)}")
             
-            time.sleep(2)  # Check every 2 seconds
+            time.sleep(2)
             
         except Exception as e:
-            print(f"Error monitoring clipboard ({type(e).__name__}): {str(e)}")
-            time.sleep(2)  # Continue monitoring even after error
+            logging.error(f"Error monitoring clipboard ({type(e).__name__}): {str(e)}")
+            time.sleep(2)
 
 def start_monitoring():
     thread = threading.Thread(target=monitor_clipboard, daemon=True)

@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, session, redirect, url_for, j
 from blueprints.url_routes import url_bp
 from blueprints.queue_routes import queue_bp
 from blueprints.auth_routes import auth_bp, login_required
+from blueprints.settings_api import settings_bp
 from utils.file_handlers import init_data_files
 from clipboard_monitor import start_monitoring
 import logging
@@ -22,6 +23,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.register_blueprint(url_bp, url_prefix='/api/urls')
 app.register_blueprint(queue_bp, url_prefix='/api/queue')
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
+app.register_blueprint(settings_bp, url_prefix='/api/settings')
 
 # Initialize data files
 init_data_files()

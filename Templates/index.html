@@ -176,6 +176,90 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-cog text-secondary me-2"></i>Settings
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Items per page</label>
+                        <select id="items-per-page" class="form-select">
+                            <option value="5">5</option>
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Theme</label>
+                        <select id="theme-select" class="form-select">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="auto">Auto (System)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">AI Provider</label>
+                        <select id="ai-provider-select" class="form-select">
+                            <option value="openai">OpenAI</option>
+                            <option value="ollama">Ollama</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button onclick="saveSettings()" class="btn btn-primary">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OpenAI API Key Modal -->
+    <div class="modal fade" id="openaiKeyModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Enter OpenAI API Key</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <input id="openai-api-key-input" type="text" class="form-control" placeholder="sk-...">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="saveOpenAIKey()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ollama Model Modal -->
+    <div class="modal fade" id="ollamaModelModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Select Ollama Model</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <select id="ollama-model-select" class="form-select"></select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="saveOllamaModel()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="d-flex">
         <!-- Sidebar -->
         <div class="bg-white shadow-sm p-4 position-fixed" style="width: 280px; height: 100vh; overflow-y: auto;">
@@ -251,14 +335,19 @@
             <div class="container">
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h1 class="h3 mb-0">
+                        <div class="d-flex justify-content-between align-items-center mb-4">                            <h1 class="h3 mb-0">
                                 <span class="text-primary">🔗</span> URL Collections
                             </h1>
-                            <button data-bs-toggle="modal" data-bs-target="#urlModal"
-                                class="btn btn-primary btn-add-animate">
-                                <i class="fas fa-plus me-1"></i>
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button data-bs-toggle="modal" data-bs-target="#settingsModal"
+                                    class="btn btn-outline-secondary">
+                                    <i class="fas fa-cog"></i>
+                                </button>
+                                <button data-bs-toggle="modal" data-bs-target="#urlModal"
+                                    class="btn btn-primary btn-add-animate">
+                                    <i class="fas fa-plus me-1"></i>
+                                </button>
+                            </div>
                         </div>
 
                         <div id="collection-section">
@@ -444,6 +533,101 @@
     .catch(() => {
       thinkBody.innerText = 'Failed to load think details.';
       thinkModal.show();
+    });
+  }
+
+  // On page load, fetch settings and update UI
+  window.addEventListener('DOMContentLoaded', function() {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(cfg => {
+        if(cfg.itemsPerPage) document.getElementById('items-per-page').value = cfg.itemsPerPage;
+        if(cfg.theme) document.getElementById('theme-select').value = cfg.theme;
+        if(cfg.aiProvider) document.getElementById('ai-provider-select').value = cfg.aiProvider;
+        // You can reflect settings in other areas as needed
+      });
+      // Attach AI provider change event after DOM is ready
+      document.getElementById('ai-provider-select').addEventListener('change', onAIProviderChange);
+  });
+
+  // Save settings from the modal
+  function saveSettings() {
+    const itemsPerPage = document.getElementById('items-per-page').value;
+    const theme = document.getElementById('theme-select').value;
+    const aiProvider = document.getElementById('ai-provider-select').value;
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ itemsPerPage, theme, aiProvider })
+    })
+    .then(res => res.json())
+    .then(() => {
+      const toast = document.createElement('div');
+      toast.className = 'toast align-items-center text-bg-success border-0';
+      toast.role = 'alert';
+      toast.innerHTML = `
+        <div class="d-flex">
+          <div class="toast-body">
+            Settings saved successfully!
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      `;
+      document.querySelector('.toast-container').appendChild(toast);
+      const bsToast = new bootstrap.Toast(toast);
+      bsToast.show();
+      setTimeout(() => { toast.remove(); }, 3000);
+      // Close the settings modal
+      const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+      if (modal) modal.hide();
+    });
+  }
+
+  // Show OpenAI API key modal when OpenAI is selected
+  function onAIProviderChange() {
+    const provider = document.getElementById('ai-provider-select').value;
+    if (provider === 'openai') {
+      const modal = new bootstrap.Modal(document.getElementById('openaiKeyModal'));
+      modal.show();
+    } else if (provider === 'ollama') {
+      fetch('/api/ollama/models')
+        .then(res => res.json())
+        .then(data => {
+          const select = document.getElementById('ollama-model-select');
+          select.innerHTML = '';
+          (data.models || []).forEach(model => {
+            const opt = document.createElement('option');
+            opt.value = model;
+            opt.textContent = model;
+            select.appendChild(opt);
+          });
+          const modal = new bootstrap.Modal(document.getElementById('ollamaModelModal'));
+          modal.show();
+        });
+    }
+  }
+
+  // Save OpenAI API key
+  function saveOpenAIKey() {
+    const key = document.getElementById('openai-api-key-input').value;
+    fetch('/api/settings/openai-key', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ apiKey: key })
+    }).then(() => {
+      bootstrap.Modal.getInstance(document.getElementById('openaiKeyModal')).hide();
+    });
+  }
+
+  // Save Ollama model
+  function saveOllamaModel() {
+    const model = document.getElementById('ollama-model-select').value;
+    fetch('/api/settings/ollama-model', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ model })
+    }).then(() => {
+      bootstrap.Modal.getInstance(document.getElementById('ollamaModelModal')).hide();
     });
   }
 </script>
