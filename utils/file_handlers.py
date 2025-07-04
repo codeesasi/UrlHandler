@@ -18,7 +18,10 @@ def init_data_files():
                 json.dump(initial_data, f, indent=2)
     os.makedirs(TRAINING_DIR, exist_ok=True)
     if not os.path.exists(SUMMARY_DATA_FILE):
-        df = pd.DataFrame(columns=['timestamp', 'url', 'raw_text', 'summary','think', 'model'])
+        df = pd.DataFrame(columns=[
+            'timestamp', 'url', 'raw_text', 'summary',
+            'keywords', 'tone', 'rating', 'model'
+        ])
         df.to_excel(SUMMARY_DATA_FILE, index=False)
 
 def read_urls():
@@ -62,15 +65,16 @@ def extract_summary_parts(summary: str) -> tuple[str, str]:
     outside = re.sub(r"<think>.*?</think>", "", summary, flags=re.DOTALL).strip()
     return think, outside
 
-def create_summary_row(url: str, raw_text: str, summary: str, model_name: str) -> dict:
+def create_summary_row(url: str, raw_text: str, summary: dict, model_name: str) -> dict:
     """Create a new summary row with metadata."""
-    think, outside = extract_summary_parts(summary)
     return {
         "timestamp": datetime.now().isoformat(),
         "url": url,
         "raw_text": raw_text,
-        "summary": outside or "",
-        "think": think or outside,
+        "summary": summary.get('summary', ''),
+        "keywords": ','.join(summary.get('keywords', [])),
+        "tone": summary.get('tone', ''),
+        "rating": summary.get('rating', 0),
         "model": model_name,
     }
 

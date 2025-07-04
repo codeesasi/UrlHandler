@@ -9,6 +9,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from typing import List
+import configparser
+import os
 
 url_bp = Blueprint('urls', __name__)
 
@@ -141,7 +143,9 @@ def summarize_url():
 
         print(soup.title.string)  # Debugging line to check title extraction
 
-        # Check if the page has a t
+        # Check if the page has a title
+        if not soup.title or not soup.title.string:
+            return jsonify({'summary': 'No title found for the provided URL.'}), 404
 
         # Extract main text content
         text = soup.get_text(separator='\n', strip=True)
@@ -150,6 +154,12 @@ def summarize_url():
         
         # Store first 4000 chars for LLM context
         raw_text = text[:4000]
+        
+        # Get model from settings
+        config = configparser.ConfigParser()
+        config.read(os.path.join(os.path.dirname(__file__), '../config.ini'))
+        model_name = config.get('Settings', 'ollama_model', fallback='deepseek-r1:8b')
+        
         output_parser = PydanticOutputParser(pydantic_object=WebSummaryResult)
         escaped_format_instructions = output_parser.get_format_instructions().replace("{", "{{").replace("}", "}}")
 
@@ -176,7 +186,7 @@ def summarize_url():
 
         # 4. LLM setup
         llm = ChatOllama(
-            model="deepseek-r1:8b",
+            model=model_name,
             temperature=0.3,
             max_tokens=1500,
             top_p=0.8,
@@ -199,16 +209,21 @@ def summarize_url():
 
         # 7. Safe call with debugging
         try:
-            result = chain.invoke({"web_content": web_content_text})
-            # Save data for training
-            save_summary_data(url, raw_text, result, "deepseek-r1:8b")
-            return jsonify({'summary': result.summary,'keywords': result.keywords, 'tone': result.tone, 'rating': result.rating})
+            result = chain.invoke({"web_content": raw_text})
+            # Save summary with structured data
+            save_summary_data(
+                url=url,
+                raw_text=raw_text,
+                summary=result.model_dump(),
+                model_name=model_name
+            )
+            return jsonify(result.model_dump())
             
         except Exception as e:
-            # Optional fallback: get raw model output to inspect
-            raw_output = (prompt | llm).invoke({"web_content": web_content_text})
-            return jsonify({'summary': raw_output.summary,'keywords': raw_output.keywords, 'tone': raw_output.tone, 'rating': raw_output.rating})
-        
+            if "Failed to connect to Ollama service" in str(e):
+                return jsonify({'error': 'Ollama service not available'}), 503
+            return jsonify({'error': str(e)}), 500
+            
     except Exception as e:
         return jsonify({'summary': f'Error: {str(e)}'}), 500
 
