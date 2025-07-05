@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, session, redirect, url_for
 from functools import wraps
-from utils.file_handlers import read_users, write_users
 import hashlib
+from utils.common import connect_pgdb
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -27,20 +27,34 @@ def login():
     if not email or not password:
         return jsonify({'message': 'Missing email or password'}), 400
 
-    users = read_users()
-    user = users.get(email)
-    if not user or user['password'] != hashlib.sha256(password.encode()).hexdigest():
+    try:
+        cursor = connect_pgdb()
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        
+        # Call login procedure
+        cursor.execute("""
+            CALL stp_user_login(%s, %s, NULL, NULL, NULL);
+            """, (email, hashed_password))
+        
+        result = cursor.fetchone()
+        if result and result[0]:  # Check success flag
+            session['user'] = {
+                'email': result[1],
+                'role': result[2]
+            }
+            
+            if remember_me:
+                session.permanent = True
+                
+            return jsonify({'message': 'Login successful'})
+            
         return jsonify({'message': 'Invalid email or password'}), 401
-
-    session['user'] = {
-        'email': email,
-        'role': user['role']
-    }
-    
-    if remember_me:
-        session.permanent = True
-
-    return jsonify({'message': 'Login successful'})
+        
+    except Exception as e:
+        return jsonify({'message': f'Login failed: {str(e)}'}), 500
+    finally:
+        if cursor:
+            cursor.close()
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
@@ -62,15 +76,24 @@ def signup():
     if not email or not password:
         return jsonify({'message': 'Missing email or password'}), 400
 
-    users = read_users()
-    if email in users:
-        return jsonify({'message': 'Email already registered'}), 400
-
-    # Hash the password and store new user
-    users[email] = {
-        'password': hashlib.sha256(password.encode()).hexdigest(),
-        'role': 'user'
-    }
-    write_users(users)
-
-    return jsonify({'message': 'Account created successfully'})
+    try:
+        cursor = connect_pgdb()
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        
+        # Insert new user
+        cursor.execute("""
+            INSERT INTO tbl_Users (Email, Password, Username)
+            VALUES (%s, %s, %s)
+            """, (email, hashed_password, email.split('@')[0]))
+            
+        cursor.connection.commit()
+        return jsonify({'message': 'Account created successfully'})
+        
+    except Exception as e:
+        cursor.connection.rollback()
+        if 'uq_users_email' in str(e):
+            return jsonify({'message': 'Email already registered'}), 400
+        return jsonify({'message': f'Registration failed: {str(e)}'}), 500
+    finally:
+        if cursor:
+            cursor.close()
