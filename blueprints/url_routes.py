@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from typing import List
 import configparser
 import os
+from utils.db_handler import get_urls, get_db_connection
 
 url_bp = Blueprint('urls', __name__)
 
@@ -24,7 +25,7 @@ class WebSummaryResult(BaseModel):
 @url_bp.route('/get_urls', methods=['GET'])
 def get_urls():
     try:
-        urls = read_urls()
+        urls = get_urls()
         return jsonify(urls)
     except Exception as e:
         current_app.logger.error(f"Error in get_urls: {str(e)}")
@@ -37,26 +38,14 @@ def add_url():
     if not url or not is_valid_url(url):
         return jsonify({'status': 'error', 'message': 'Invalid or missing URL'}), 400
 
-    urls = read_urls()
-    if any(entry['url'] == url for entry in urls):
-        return jsonify({
-            'success': False,
-            'message': 'This URL has already been added to your collection'
-        }), 409
-
-    metadata = get_url_metadata(url)
-    new_entry = {
-        'url': url,
-        'title': metadata['title'],
-        'thumbnail': metadata['thumbnail'],
-        'added': get_current_utc_datetime(),
-        'isRead': False,
-        'clickCount': 0
-    }
-    
-    urls.append(new_entry)
-    write_urls(urls)
-    return jsonify({'status': 'success'}), 200
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("CALL stp_insert_url(%s)", (url,))
+                conn.commit()
+        return jsonify({'status': 'success'}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @url_bp.route('/delete_url', methods=['POST'])
 def delete_url():
